@@ -186,7 +186,8 @@ class WaterflowGUI(QMainWindow):
 
         self.inPreset = False
         self.displayPrint(
-            "NEW SESSION: " + QDateTime.currentDateTime().toString("hh:mm:ss")
+            "NEW SESSION: " + QDateTime.currentDateTime().toString("hh:mm:ss"),
+            reformat=False
         )
 
     # SERIAL FUNCTIONS
@@ -288,12 +289,12 @@ class WaterflowGUI(QMainWindow):
             self.enableDisplayAccess(False)
             # info log
             log = (
-                f"{QDateTime.currentDateTime().toString(DATE_TIME_FORMAT)}\n"
+                f"\n{QDateTime.currentDateTime().toString(DATE_TIME_FORMAT)}\n"
                 + f"Testname: {self.testName.text()}\n"
                 + f"Interval (sec): {self.timeInterval.text()}\n"
                 + f"Pins: {self.toggledPins.text()}"
             )
-            self.displayPrint(log)
+            self.displayPrint(log, reformat=False)
 
             # thread timeout and reading
             self.serialWorker.setPins(self.toggledPins.text())
@@ -338,19 +339,20 @@ class WaterflowGUI(QMainWindow):
         return QDateTime.currentDateTime().toString(DATE_TIME_FORMAT) + string.strip()
 
     @pyqtSlot(str)
-    def displayPrint(self, string: str) -> None:
+    def displayPrint(self, string: str, reformat=True) -> None:
         """Displays to monitor and logs data.
 
         Args:
             string(str): the string to display and log
         """
-        output = self.strFormat(string)
-        self.monitor.append(output)
+        if reformat:
+            string = self.strFormat(string)
+        self.monitor.append(string)
         self.monitor.verticalScrollBar().setValue(
             self.monitor.verticalScrollBar().maximum()
         )
         with open(SYS_LOG_FILE, "a") as sysLog:
-            sysLog.write(output + "\n")
+            sysLog.write(string + "\n")
 
     # Display functions
 
