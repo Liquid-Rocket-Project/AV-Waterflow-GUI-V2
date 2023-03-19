@@ -12,6 +12,6 @@ Second iteration of the waterflow GUI. Simplified to only preset usage, updated 
 - If you do not execute the program in the correct directory, you may find that the program cannot "find" certain files. If you are having this issue, try to switch to the correct directory. Alternatively, you can try editing the constants (in blue caps) at the top of the file. Look for the ones that indicate a file path, and replace them with the full path of the file. For example, ```"C:\Users\Bobjoe\programs\AV-Waterflow-GUI-V2\src\errorIcon.png"``` will replace ```"./src/errorIcon.png"```
 
 ## GUI Layout
-<img src="./src/GUIExample.png" alt="" title="GUIexample">
+<img src="./src/GUIscreenshot.png" alt="" title="GUIexample">
 
 Feel free to reach out to me (Nick Fan, nfan17) if you have any questions or need help.
