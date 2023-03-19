@@ -26,7 +26,7 @@ DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
 PIN_INIT = "12345"
 
 # CONSTANTS -------------------------------------------------------------------|
-MIN_SIZE = 500
+SIZE = 500
 LINE_HEIGHT = 35
 SETTING_WIDTH = 150
 BOX_SIZE = 300
@@ -157,7 +157,7 @@ class WaterflowGUI(QMainWindow):
         super().__init__()
         self.setWindowTitle("WaterFlow Control")
         self.setWindowIcon(QIcon(WINDOW_ICON_P))
-        self.setMinimumSize(MIN_SIZE * 2, MIN_SIZE)
+        self.setFixedSize(SIZE * 2, SIZE)
         self.generalLayout = QGridLayout()
         centralWidget = QWidget()
         centralWidget.setLayout(self.generalLayout)
