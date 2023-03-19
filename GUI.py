@@ -7,32 +7,23 @@ To be paired with Waterflow-Testbench Firmware.
 
 
 import re
-import serial
-import serial.tools.list_ports
 import sys
 import time
-
-from PyQt6.QtCore import Qt, QDateTime
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (
-    QApplication,
-    QGridLayout,
-    QLabel,
-    QMainWindow,
-    QPushButton,
-    QWidget,
-    QLineEdit,
-    QTextEdit,
-    QSpacerItem,
-    QMessageBox,
-    QInputDialog,
-)
 from queue import Empty, Queue
-from threading import Timer, Thread
+from threading import Timer
+
+import serial
+import serial.tools.list_ports
+from PyQt6.QtCore import QDateTime, QObject, Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
+                             QLineEdit, QMainWindow, QMessageBox, QPushButton,
+                             QSpacerItem, QTextEdit, QWidget)
 
 # SETTINGS --------------------------------------------------------------------|
 BAUDRATE = 9600
 DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
+PIN_INIT = "12345"
 
 # CONSTANTS -------------------------------------------------------------------|
 MIN_SIZE = 500
@@ -47,7 +38,6 @@ ERROR = 1
 MESSAGE_LABELS = ("Warning", "Error")
 DATE = QDateTime.currentDateTime().toString("MM-dd-yy")
 START_TIME = QDateTime.currentDateTime().toString("MM-dd-yy-hh-mm")
-
 
 # SERIAL HELPER ---------------------------------------------------------------|
 class SerialComm:
@@ -104,13 +94,65 @@ class SerialComm:
         """Close connection."""
         self.connection.close()
 
+class ThreadSignals(QObject):
+    """Threading signals."""
+    msg = pyqtSignal(str)
+
+class SerialThread(QThread):
+    """GUI Serial Manager Thread."""
+
+    def __init__(self, connection: SerialComm, pins: str, parent=None) -> None:
+        QThread.__init__(self, parent)
+        self.serialConnection = connection
+        self.serialQueue = Queue()
+        self.pins = pins
+        self.signals = ThreadSignals()
+
+    def setPins(self, newPins: str) -> None:
+        """Sets new pins."""
+        self.pins = newPins
+
+    def run(self) -> None:
+        """Sends initial toggle and continuously reads
+        until indicated to stop, then toggles again."""
+        message = self.pins + "\n"
+        self.serialConnection.sendMessage(message)
+        # read serial
+        while True:
+            try:
+                cont = self.serialQueue.get(block=False)
+                if not cont:
+                    # toggle
+                    self.serialConnection.sendMessage(message)
+                    flush = self.serialConnection.receiveMessage()
+                    for line in flush.split("\n"):
+                        self.signals.msg.emit(line)
+
+                    # cleanup queue
+                    while True:
+                        try:
+                            self.serialQueue.get(block=False)
+                        except Empty:
+                            break
+
+                    # exit
+                    break
+            except Empty:
+                received = self.serialConnection.readEolLine()
+                if not received:
+                    continue
+                self.signals.msg.emit(received)
+
+    def interrupt(self) -> None:
+        """Sends stop message to threading queue."""
+        self.serialQueue.put(False)
 
 # MAIN WINDOW -----------------------------------------------------------------|
 class WaterflowGUI(QMainWindow):
     """Waterflow GUI for RPM"""
 
     def __init__(self) -> None:
-        """Constructs a new WF GUI window."""
+        """Constructs a new Waterflow GUI window."""
         super().__init__()
         self.setWindowTitle("WaterFlow Control")
         self.setWindowIcon(QIcon(WINDOW_ICON_P))
@@ -127,16 +169,17 @@ class WaterflowGUI(QMainWindow):
         if not self._selectPort() or not self._verifySetupReady():
             sys.exit(1)
 
+        # setup and connect serial with serial manager thread
         self.serialConnection = self._setupConnection(self.port, BAUDRATE)
-        self.serialQueue = Queue()
-        self.dataQueue = Queue()
+        self.readThread = SerialThread(self.serialConnection, "")
+        self.readThread.signals.msg.connect(self._displayPrint)
 
         self.inPreset = False
         self._displayPrint(
             "NEW SESSION: "
             + QDateTime.currentDateTime().toString("hh:mm:ss")
         )
-    
+
     # SERIAL FUNCTIONS
 
     def _selectPort(self) -> bool:
@@ -144,7 +187,7 @@ class WaterflowGUI(QMainWindow):
         ports = serial.tools.list_ports.comports()
         if len(ports) < 1:
             self.createMessageBox(
-                ERROR, 
+                ERROR,
                 "No COM ports available.\n"
                 +"Please plug in devices before starting."
             )
@@ -183,7 +226,7 @@ class WaterflowGUI(QMainWindow):
     def _setupConnection(self, selectedPort: str, baud: int) -> SerialComm:
         """Sets up and returns a serial comm."""
         ser = SerialComm(selectedPort, baud)
-        ser.sendMessage("12345" + "\n")
+        ser.sendMessage(PIN_INIT + "\n")
 
         # ensure messages are sending
         valid = False
@@ -201,6 +244,8 @@ class WaterflowGUI(QMainWindow):
         """Starts a preset toggle/read thread with a timeout."""
         # validate inputs
         if not self.inPreset:
+            self.enterDataButton.setDisabled(True)
+            self.startPresetButton.setDisabled(True)
             try:
                 seconds = float(self.timeInterval.text())
             except ValueError:
@@ -216,57 +261,28 @@ class WaterflowGUI(QMainWindow):
             )
             self._displayPrint(log)
 
-            pins = self.toggledPins.text()
-            readThread = Thread(target=self._readIn, args=(pins, seconds,))
-            readThread.start()
-
-    def _readIn(self, pins: str, seconds: float) -> None:
-        """Reads in from serial until timer runs out."""
-        message = pins + "\n"
-        self.inPreset = True
-
-        self.serialConnection.sendMessage(message)
-        # start timeout
-        timeout = Timer(seconds, function=self._endPreset)
-        timeout.start()
-
-        # read serial
-        while True:
-            try:
-                cont = self.serialQueue.get(block=False)
-                if not cont:
-                    # toggle
-                    self.serialConnection.sendMessage(pins + "\n")
-                    flush = self.serialConnection.receiveMessage()
-                    for line in flush.split("\n"):
-                        self._displayPrint(self._strFormat(line))
-
-                    # cleanup queue
-                    while True:
-                        try:
-                            self.serialQueue.get(block=False)
-                        except Empty:
-                            break
-
-                    # exit
-                    self.inPreset = False
-                    break
-            except Empty:
-                received = self.serialConnection.readEolLine()
-                if not received:
-                    continue
-                self._displayPrint(self._strFormat(received))
+            # thread timeout and reading
+            self.readThread.setPins(self.toggledPins.text())
+            self.inPreset = True
+            self.timeout = Timer(seconds, function=self._endPreset)
+            self.readThread.start()
+            self.timeout.start()
 
     def _endPreset(self) -> None:
         """Sends stop message to threading queue."""
         if self.inPreset:
-            self.serialQueue.put(False)
+            self.readThread.interrupt()
+            self.timeout.cancel()
+            self.inPreset = False
+            self.enterDataButton.setEnabled(True)
+            self.startPresetButton.setEnabled(True)
 
     def _strFormat(self, string: str) -> str:
         """Returns formatted string for monitor display."""
         return QDateTime.currentDateTime().toString(DATE_TIME_FORMAT) + string.strip()
-    
-    def _displayPrint(self, output: str) -> None:
+
+    def _displayPrint(self, string: str) -> None:
+        output = self._strFormat(string)
         self.monitor.append(output)
         self.monitor.verticalScrollBar().setValue(self.monitor.verticalScrollBar().maximum())
         with open(f"./log/system/{DATE}.txt", "a") as sysLog:
@@ -288,17 +304,18 @@ class WaterflowGUI(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Adds additional functions when closing window."""
-        self._displayPrint(
-            "-----------------------------------------------------------------------"
-        )
+        with open(f"./log/system/{DATE}.txt", "a") as sysLog:
+            sysLog.write(
+                "---------------------------------------------------------------------------\n"
+            )
         if self.serialConnection.connection.is_open:
             self.serialConnection.close()
-    
+
     def _enterData(self) -> None:
         """Creates input dialog box accepts data."""
         measurement, ok = QInputDialog().getText(
             self.centralWidget(),
-            "Data Input", 
+            "Data Input",
             "Please enter datatype and data: ",
         )
         if not ok:
@@ -327,9 +344,6 @@ class WaterflowGUI(QMainWindow):
         self.toggledPins = QLineEdit()
         self.toggledPins.setMaximumHeight(LINE_HEIGHT)
         self.toggledPins.setMaximumWidth(SETTING_WIDTH)
-        self.measurementUnits = QLineEdit()
-        #self.measurementUnits.setMaximumHeight(LINE_HEIGHT)
-        #self.measurementUnits.setMaximumWidth(SETTING_WIDTH)
         self.testName = QLineEdit()
         self.testName.setMaximumHeight(LINE_HEIGHT)
         self.testName.setMaximumWidth(2 * SETTING_WIDTH + 10)
