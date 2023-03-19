@@ -9,7 +9,6 @@ To be paired with Waterflow-Testbench Firmware.
 import re
 import sys
 import time
-from queue import Empty, Queue
 from threading import Timer
 
 import serial
@@ -26,16 +25,17 @@ DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
 PIN_INIT = "12345"
 
 # CONSTANTS -------------------------------------------------------------------|
-SIZE = 500
-LINE_HEIGHT = 35
-SETTING_WIDTH = 150
-BOX_SIZE = 300
 DATE = QDateTime.currentDateTime().toString("MM-dd-yy")
 START_TIME = QDateTime.currentDateTime().toString("MM-dd-yy-hh-mm")
 SYS_LOG_FILE = f"./log/system/{DATE}.txt"
 WINDOW_ICON_P = "./src/octoLogo.png"
 ERROR_ICON_P = "./src/errorIcon.png"
 WARNING_ICON_P = "./src/warningIcon.png"
+
+SIZE = 500
+LINE_HEIGHT = 35
+SETTING_WIDTH = 150
+BOX_SIZE = 300
 WARNING = 0
 ERROR = 1
 MESSAGE_LABELS = ("Warning", "Error")
@@ -46,7 +46,7 @@ class SerialComm:
 
     def __init__(self, com: str, baudrate: int) -> None:
         """Creates new serial com manager.
-        
+
         Args:
             com(str): the COM port
             baudrate(int): the baudrate
@@ -108,7 +108,7 @@ class SerialWorker(QObject):
 
     def __init__(self, connection: SerialComm, pins: str, parent=None) -> None:
         """Constructs new Serial Worker.
-        
+
         Args:
             connection(SerialComm): the serial connection to use
             pins(str): pins to toggle
@@ -116,13 +116,12 @@ class SerialWorker(QObject):
         """
         super().__init__(parent)
         self.serialConnection = connection
-        self.serialQueue = Queue()
         self.pins = pins
         self.active = False
 
     def setPins(self, newPins: str) -> None:
         """Sets new pins.
-        
+
         Args:
             newPins(str): a new set of pins to toggle.
         """
@@ -141,7 +140,7 @@ class SerialWorker(QObject):
             if not received:
                 continue
             self.msg.emit(received)
-      
+
         # toggle
         self.serialConnection.sendMessage(message)
         flush = self.serialConnection.receiveMessage()
@@ -152,12 +151,13 @@ class SerialWorker(QObject):
         self.finished.emit()
 
     def interrupt(self) -> None:
-        """Sends stop message to threading queue."""
+        """Stops threading loop."""
         self.active = False
 
 # MAIN WINDOW -----------------------------------------------------------------|
 class WaterflowGUI(QMainWindow):
     """Waterflow GUI for RPM"""
+    serialInterrupt = pyqtSignal()
 
     def __init__(self) -> None:
         """Constructs a new Waterflow GUI window."""
@@ -170,18 +170,18 @@ class WaterflowGUI(QMainWindow):
         centralWidget.setLayout(self.generalLayout)
         self.setCentralWidget(centralWidget)
 
-        self._createSettings()
-        self._createDisplayArea()
+        self.createSettings()
+        self.createDisplayArea()
 
         # exit program if setup is unsuccessful
-        if not self._selectPort() or not self._verifySetupReady():
+        if not self.selectPort() or not self.verifySetupReady():
             sys.exit(1)
 
         # setup and connect serial with serial manager thread
         self.threadingSetup()
 
         self.inPreset = False
-        self._displayPrint(
+        self.displayPrint(
             "NEW SESSION: "
             + QDateTime.currentDateTime().toString("hh:mm:ss")
         )
@@ -191,17 +191,18 @@ class WaterflowGUI(QMainWindow):
     def threadingSetup(self) -> None:
         """Sets up threading, serial worker and signals/slots."""
         self.serialThread = QThread()
-        self.serialConnection = self._setupConnection(self.port, BAUDRATE)
+        self.serialConnection = self.setupConnection(self.port, BAUDRATE)
         self.serialWorker = SerialWorker(self.serialConnection, "")
         self.serialWorker.moveToThread(self.serialThread)
         self.serialThread.started.connect(self.serialWorker.run)
         self.serialWorker.finished.connect(self.serialThread.quit)
-        self.serialWorker.msg.connect(self._displayPrint)
-        self.serialWorker.finished.connect(self._enterData)
+        self.serialInterrupt.connect(self.endPreset)
+        self.serialWorker.msg.connect(self.displayPrint)
+        self.serialWorker.finished.connect(self.enterData)
 
-    def _selectPort(self) -> bool:
+    def selectPort(self) -> bool:
         """Checks for available ports and asks for a selection.
-        
+
         Returns:
             bool: True setup is successful, False otherwise
         """
@@ -227,9 +228,9 @@ class WaterflowGUI(QMainWindow):
 
         return True
 
-    def _verifySetupReady(self) -> bool:
+    def verifySetupReady(self) -> bool:
         """Double checks to verify it is safe to initialize valve connection.
-        
+
         Returns:
             bool: True if the user is ready for setup, false if not.
         """
@@ -248,9 +249,9 @@ class WaterflowGUI(QMainWindow):
 
         return True
 
-    def _setupConnection(self, selectedPort: str, baud: int) -> SerialComm:
+    def setupConnection(self, selectedPort: str, baud: int) -> SerialComm:
         """Sets up and returns a serial comm.
-        
+
         Args:
             seletedPort(str): the selected COM port
             baud(int): the desired baudrate
@@ -272,7 +273,7 @@ class WaterflowGUI(QMainWindow):
 
         return ser
 
-    def _presetRun(self) -> None:
+    def presetRun(self) -> None:
         """Starts a preset toggle/read thread with a timeout."""
         # validate inputs
         if not self.inPreset:
@@ -290,26 +291,30 @@ class WaterflowGUI(QMainWindow):
                 + f"Interval (sec): {self.timeInterval.text()}\n"
                 + f"Pins: {self.toggledPins.text()}"
             )
-            self._displayPrint(log)
+            self.displayPrint(log)
 
             # thread timeout and reading
             self.serialWorker.setPins(self.toggledPins.text())
             self.inPreset = True
-            self.timeout = Timer(seconds, function=self._endPreset)
+            self.timeout = Timer(seconds, function=self.sendInterrupt)
             self.serialThread.start()
             self.timeout.start()
 
-    def _endPreset(self) -> None:
-        """Sends stop message to threading queue."""
+    def endPreset(self) -> None:
+        """Stops threading loop."""
         if self.inPreset:
-            self.serialWorker.active = False  # fix this if possible, idk how yet
+            self.serialWorker.active = False
             self.timeout.cancel()
             self.inPreset = False
             self.enableDisplayAccess(True)
 
+    def sendInterrupt(self) -> None:
+        """Emits serial stop signal."""
+        self.serialInterrupt.emit()
+
     def enableDisplayAccess(self, access: bool) -> None:
         """Enables or disables display access.
-        
+
         Args:
             access(bool): True to enable display access, false to disable.
         """
@@ -317,11 +322,11 @@ class WaterflowGUI(QMainWindow):
         self.startPresetButton.setEnabled(access)
         self.testName.setReadOnly(not access)
         self.timeInterval.setReadOnly(not access)
-        self.toggledPins.setReadOnly(not access)            
+        self.toggledPins.setReadOnly(not access)
 
-    def _strFormat(self, string: str) -> str:
+    def strFormat(self, string: str) -> str:
         """Returns formatted string for monitor display.
-        
+
         Args:
             string(str): the string to format
 
@@ -331,13 +336,13 @@ class WaterflowGUI(QMainWindow):
         return QDateTime.currentDateTime().toString(DATE_TIME_FORMAT) + string.strip()
 
     @pyqtSlot(str)
-    def _displayPrint(self, string: str) -> None:
+    def displayPrint(self, string: str) -> None:
         """Displays to monitor and logs data.
-        
+
         Args:
             string(str): the string to display and log
         """
-        output = self._strFormat(string)
+        output = self.strFormat(string)
         self.monitor.append(output)
         self.monitor.verticalScrollBar().setValue(self.monitor.verticalScrollBar().maximum())
         with open(SYS_LOG_FILE, "a") as sysLog:
@@ -348,7 +353,7 @@ class WaterflowGUI(QMainWindow):
     @staticmethod
     def createMessageBox(boxType: int, message: str) -> None:
         """Creates error message popup with indicated message.
-        
+
         Args:
             boxType(int): the type of message box to create
             message(str): the message to display in the box
@@ -371,7 +376,7 @@ class WaterflowGUI(QMainWindow):
         if self.serialConnection.connection.is_open:
             self.serialConnection.close()
 
-    def _enterData(self) -> None:
+    def enterData(self) -> None:
         """Creates input dialog box accepts data."""
         measurement, ok = QInputDialog().getText(
             self.centralWidget(),
@@ -380,9 +385,9 @@ class WaterflowGUI(QMainWindow):
         )
         if not ok:
             return
-        self._displayPrint(measurement)
+        self.displayPrint(measurement)
 
-    def _createDisplayArea(self) -> None:
+    def createDisplayArea(self) -> None:
         """Create text display area."""
         self.monitor = QTextEdit()
         self.monitor.ensureCursorVisible()
@@ -390,7 +395,7 @@ class WaterflowGUI(QMainWindow):
         self.monitor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.generalLayout.addWidget(self.monitor, 0, 0)
 
-    def _createSettings(self):
+    def createSettings(self):
         """Create right side settings layout."""
         # area setup
         self.settings = QGridLayout()
@@ -411,13 +416,13 @@ class WaterflowGUI(QMainWindow):
         # input buttons
         self.startPresetButton = QPushButton("Start Preset")
         self.startPresetButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.startPresetButton.clicked.connect(self._presetRun)
+        self.startPresetButton.clicked.connect(self.presetRun)
         self.cancelPresetButton = QPushButton("Cancel Preset")
         self.cancelPresetButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.cancelPresetButton.clicked.connect(self._endPreset)
+        self.cancelPresetButton.clicked.connect(self.endPreset)
         self.enterDataButton = QPushButton("Enter Data")
         self.enterDataButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.enterDataButton.clicked.connect(self._enterData)
+        self.enterDataButton.clicked.connect(self.enterData)
 
         # settings layout
         self.settings.addWidget(title, 1, 0)
