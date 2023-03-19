@@ -6,14 +6,12 @@ To be paired with Waterflow-Testbench Firmware.
 """
 
 
-import pandas as pd
 import re
 import serial
 import serial.tools.list_ports
 import sys
 import time
 
-from collections import defaultdict
 from PyQt6.QtCore import Qt, QDateTime
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -34,13 +32,13 @@ from threading import Timer, Thread
 
 # SETTINGS --------------------------------------------------------------------|
 BAUDRATE = 9600
+DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
 
 # CONSTANTS -------------------------------------------------------------------|
 MIN_SIZE = 500
 LINE_HEIGHT = 35
 SETTING_WIDTH = 150
 BOX_SIZE = 300
-DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss -> "
 WINDOW_ICON_P = "./src/octoLogo.png"
 ERROR_ICON_P = "./src/errorIcon.png"
 WARNING_ICON_P = "./src/warningIcon.png"
@@ -131,8 +129,13 @@ class WaterflowGUI(QMainWindow):
 
         self.serialConnection = self._setupConnection(self.port, BAUDRATE)
         self.serialQueue = Queue()
+        self.dataQueue = Queue()
 
         self.inPreset = False
+        self._displayPrint(
+            "NEW SESSION: "
+            + QDateTime.currentDateTime().toString("hh:mm:ss")
+        )
     
     # SERIAL FUNCTIONS
 
@@ -156,20 +159,21 @@ class WaterflowGUI(QMainWindow):
         if not ok:
             return False
 
-        self.port = str(re.findall(r"COM[0-9]*", selection)[0])  # get port
+        self.port = str(re.findall(r"COM[0-9]+", selection)[0])  # get port
 
         return True
 
     def _verifySetupReady(self) -> bool:
         """Double checks to verify it is safe to initialize valve connection."""
-        conf = QMessageBox()
-        ok = conf.question(
-            self.centralWidget(),
+        conf = QMessageBox(
+            QMessageBox.Icon.Warning,
             "Setup Confirmation",
             "Setup will cause the valves to open and close.\n"
             + "Continue if this is safe, or cancel to exit.",
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            self.centralWidget(),
         )
+        ok = conf.exec()
 
         if ok == QMessageBox.StandardButton.Cancel:  # check ok/cancel
             return False
@@ -210,7 +214,7 @@ class WaterflowGUI(QMainWindow):
                 + f"Interval (sec): {self.timeInterval.text()}\n"
                 + f"Pins: {self.toggledPins.text()}"
             )
-            self.monitor.append(log)
+            self._displayPrint(log)
 
             pins = self.toggledPins.text()
             readThread = Thread(target=self._readIn, args=(pins, seconds,))
@@ -235,7 +239,7 @@ class WaterflowGUI(QMainWindow):
                     self.serialConnection.sendMessage(pins + "\n")
                     flush = self.serialConnection.receiveMessage()
                     for line in flush.split("\n"):
-                        self.monitor.append(self.strFormat(line))
+                        self._displayPrint(self._strFormat(line))
 
                     # cleanup queue
                     while True:
@@ -251,16 +255,21 @@ class WaterflowGUI(QMainWindow):
                 received = self.serialConnection.readEolLine()
                 if not received:
                     continue
-                self.monitor.append(self.strFormat(received))
+                self._displayPrint(self._strFormat(received))
 
     def _endPreset(self) -> None:
         """Sends stop message to threading queue."""
         if self.inPreset:
             self.serialQueue.put(False)
 
-    def strFormat(self, string: str) -> str:
+    def _strFormat(self, string: str) -> str:
         """Returns formatted string for monitor display."""
         return QDateTime.currentDateTime().toString(DATE_TIME_FORMAT) + string.strip()
+    
+    def _displayPrint(self, output: str) -> None:
+        self.monitor.append(output)
+        with open(f"./log/system/{DATE}.txt", "a") as sysLog:
+            sysLog.write(output + "\n")
 
     # Display functions
 
@@ -276,9 +285,29 @@ class WaterflowGUI(QMainWindow):
         box.setText(f"{MESSAGE_LABELS[boxType]}: {message}")
         box.exec()
 
+    def closeEvent(self, event) -> None:
+        """Adds additional functions when closing window."""
+        self._displayPrint(
+            "-----------------------------------------------------------------------"
+        )
+        if self.serialConnection.connection.is_open:
+            self.serialConnection.close()
+    
+    def _enterData(self) -> None:
+        """Creates input dialog box accepts data."""
+        measurement, ok = QInputDialog().getText(
+            self.centralWidget(),
+            "Data Input", 
+            "Please enter datatype and data: ",
+        )
+        if not ok:
+            return
+        self._displayPrint(measurement)
+
     def _createDisplayArea(self) -> None:
         """Create text display area."""
         self.monitor = QTextEdit()
+        self.monitor.ensureCursorVisible()
         self.monitor.setReadOnly(True)
         self.monitor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.generalLayout.addWidget(self.monitor, 0, 0)
@@ -288,7 +317,7 @@ class WaterflowGUI(QMainWindow):
         # area setup
         self.settings = QGridLayout()
         title = QLabel("Presets: ")
-        bottomSpacer = QSpacerItem(10, 300)
+        bottomSpacer = QSpacerItem(10, 250)
 
         # input boxes
         self.timeInterval = QLineEdit()
@@ -298,11 +327,11 @@ class WaterflowGUI(QMainWindow):
         self.toggledPins.setMaximumHeight(LINE_HEIGHT)
         self.toggledPins.setMaximumWidth(SETTING_WIDTH)
         self.measurementUnits = QLineEdit()
-        self.measurementUnits.setMaximumHeight(LINE_HEIGHT)
-        self.measurementUnits.setMaximumWidth(SETTING_WIDTH)
+        #self.measurementUnits.setMaximumHeight(LINE_HEIGHT)
+        #self.measurementUnits.setMaximumWidth(SETTING_WIDTH)
         self.testName = QLineEdit()
         self.testName.setMaximumHeight(LINE_HEIGHT)
-        self.testName.setMaximumWidth(SETTING_WIDTH)
+        self.testName.setMaximumWidth(2 * SETTING_WIDTH + 10)
 
         # input buttons
         self.startPresetButton = QPushButton("Start Preset")
@@ -311,6 +340,9 @@ class WaterflowGUI(QMainWindow):
         self.cancelPresetButton = QPushButton("Cancel Preset")
         self.cancelPresetButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.cancelPresetButton.clicked.connect(self._endPreset)
+        self.enterDataButton = QPushButton("Enter Data")
+        self.enterDataButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.enterDataButton.clicked.connect(self._enterData)
 
         # settings layout
         self.settings.addWidget(title, 1, 0)
@@ -319,12 +351,11 @@ class WaterflowGUI(QMainWindow):
         self.settings.addWidget(self.timeInterval, 3, 0)
         self.settings.addWidget(self.toggledPins, 3, 1)
         self.settings.addWidget(QLabel("Test Name: "), 4, 0)
-        self.settings.addWidget(QLabel("Measurement Units: "), 4, 1)
-        self.settings.addWidget(self.testName, 5, 0)
-        self.settings.addWidget(self.measurementUnits, 5, 1)
+        self.settings.addWidget(self.testName, 5, 0, 1, 2)
         self.settings.addWidget(self.startPresetButton, 6, 0)
         self.settings.addWidget(self.cancelPresetButton, 6, 1)
-        self.settings.addItem(bottomSpacer, 7, 0)
+        self.settings.addWidget(self.enterDataButton, 8, 0, 1, 2)
+        self.settings.addItem(bottomSpacer, 9, 0)
         self.generalLayout.addLayout(self.settings, 0, 1)
 
 
