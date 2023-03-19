@@ -73,7 +73,7 @@ class SerialComm:
         Reference: lou
         https://stackoverflow.com/questions/16470903/pyserial-2-6-specify-end-of-line-in-readline
         """
-        eol = b'\n'
+        eol = b"\n"
         eolLen = len(eol)
         line = bytearray()
         while True:
@@ -92,7 +92,7 @@ class SerialComm:
             self.connection.open()
         try:
             self.connection.write(message.encode("utf-8"))
-            time.sleep(.002)
+            time.sleep(0.002)
             return True
         except serial.SerialException:
             return False
@@ -101,8 +101,10 @@ class SerialComm:
         """Closes the com connection."""
         self.connection.close()
 
+
 class SerialWorker(QObject):
     """GUI Serial Manager Thread."""
+
     msg = pyqtSignal(str)
     finished = pyqtSignal()
 
@@ -154,9 +156,11 @@ class SerialWorker(QObject):
         """Stops threading loop."""
         self.active = False
 
+
 # MAIN WINDOW -----------------------------------------------------------------|
 class WaterflowGUI(QMainWindow):
     """Waterflow GUI for RPM"""
+
     serialInterrupt = pyqtSignal()
 
     def __init__(self) -> None:
@@ -182,8 +186,7 @@ class WaterflowGUI(QMainWindow):
 
         self.inPreset = False
         self.displayPrint(
-            "NEW SESSION: "
-            + QDateTime.currentDateTime().toString("hh:mm:ss")
+            "NEW SESSION: " + QDateTime.currentDateTime().toString("hh:mm:ss")
         )
 
     # SERIAL FUNCTIONS
@@ -210,8 +213,7 @@ class WaterflowGUI(QMainWindow):
         if len(ports) < 1:
             self.createMessageBox(
                 ERROR,
-                "No COM ports available.\n"
-                +"Please plug in devices before starting."
+                "No COM ports available.\nPlease plug in devices before starting.",
             )
             return False
 
@@ -219,7 +221,7 @@ class WaterflowGUI(QMainWindow):
             self.centralWidget(),
             "COM select",
             "Select a port:",
-            [f"{desc}" for name, desc, hwid in ports]
+            [f"{desc}" for name, desc, hwid in ports],
         )
         if not ok:
             return False
@@ -344,7 +346,9 @@ class WaterflowGUI(QMainWindow):
         """
         output = self.strFormat(string)
         self.monitor.append(output)
-        self.monitor.verticalScrollBar().setValue(self.monitor.verticalScrollBar().maximum())
+        self.monitor.verticalScrollBar().setValue(
+            self.monitor.verticalScrollBar().maximum()
+        )
         with open(SYS_LOG_FILE, "a") as sysLog:
             sysLog.write(output + "\n")
 
