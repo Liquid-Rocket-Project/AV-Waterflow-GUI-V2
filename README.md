@@ -11,6 +11,9 @@ Second iteration of the waterflow GUI. Simplified to only preset usage, updated 
 - Or, type ```python3 main.py``` (linux) or ```py main.py``` (windows) from inside the directory where the repository is located.
 - If you do not execute the program in the correct directory, you may find that the program cannot "find" certain files. If you are having this issue, try to switch to the correct directory. Alternatively, you can try editing the constants (in blue caps) at the top of the file. Look for the ones that indicate a file path, and replace them with the full path of the file. For example, ```"C:\Users\Bobjoe\programs\AV-Waterflow-GUI-V2\src\errorIcon.png"``` will replace ```"./src/errorIcon.png"```
 
+## Future Work
+I plan to try implementing csv logging in the future (hence pandas import) but it will be some time before I figure out an optimal solution for that, and whether PT readings should be included.
+
 ## GUI Layout
 <img src="./src/GUIscreenshot.png" alt="" title="GUIexample">
 
