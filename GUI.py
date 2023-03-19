@@ -268,6 +268,7 @@ class WaterflowGUI(QMainWindow):
     
     def _displayPrint(self, output: str) -> None:
         self.monitor.append(output)
+        self.monitor.verticalScrollBar().setValue(self.monitor.verticalScrollBar().maximum())
         with open(f"./log/system/{DATE}.txt", "a") as sysLog:
             sysLog.write(output + "\n")
 
