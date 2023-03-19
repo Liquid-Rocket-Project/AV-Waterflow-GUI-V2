@@ -30,14 +30,15 @@ MIN_SIZE = 500
 LINE_HEIGHT = 35
 SETTING_WIDTH = 150
 BOX_SIZE = 300
+DATE = QDateTime.currentDateTime().toString("MM-dd-yy")
+START_TIME = QDateTime.currentDateTime().toString("MM-dd-yy-hh-mm")
+SYS_LOG_FILE = f"./log/system/{DATE}.txt"
 WINDOW_ICON_P = "./src/octoLogo.png"
 ERROR_ICON_P = "./src/errorIcon.png"
 WARNING_ICON_P = "./src/warningIcon.png"
 WARNING = 0
 ERROR = 1
 MESSAGE_LABELS = ("Warning", "Error")
-DATE = QDateTime.currentDateTime().toString("MM-dd-yy")
-START_TIME = QDateTime.currentDateTime().toString("MM-dd-yy-hh-mm")
 
 # SERIAL HELPER ---------------------------------------------------------------|
 class SerialComm:
@@ -285,7 +286,7 @@ class WaterflowGUI(QMainWindow):
         output = self._strFormat(string)
         self.monitor.append(output)
         self.monitor.verticalScrollBar().setValue(self.monitor.verticalScrollBar().maximum())
-        with open(f"./log/system/{DATE}.txt", "a") as sysLog:
+        with open(SYS_LOG_FILE, "a") as sysLog:
             sysLog.write(output + "\n")
 
     # Display functions
@@ -304,7 +305,7 @@ class WaterflowGUI(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Adds additional functions when closing window."""
-        with open(f"./log/system/{DATE}.txt", "a") as sysLog:
+        with open(SYS_LOG_FILE, "a") as sysLog:
             sysLog.write(
                 "---------------------------------------------------------------------------\n"
             )
