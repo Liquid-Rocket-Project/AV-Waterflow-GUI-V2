@@ -2,7 +2,7 @@
 Second iteration of the waterflow GUI. Simplified to only preset usage, updated to receive PT data between toggles.
 
 ## Dependencies and Running
-- Make sure you have Python installed. 
+- Make sure you have Python (3+) installed. 
 - Make sure you have pip, or any package manager you are familiar with.
 - Install PyQt6: ex - ```pip install PyQt6```
 - Install pandas: ex - ```pip install pandas``` *note: this package is currently unused so feel free to delete "import pandas as pd" from GUI.py and ignore this line.
@@ -12,7 +12,7 @@ Second iteration of the waterflow GUI. Simplified to only preset usage, updated 
 - If you do not execute the program in the correct directory, you may find that the program cannot "find" certain files. If you are having this issue, try to switch to the correct directory. Alternatively, you can try editing the constants (in blue caps) at the top of the file. Look for the ones that indicate a file path, and replace them with the full path of the file. For example, ```"C:\Users\Bobjoe\programs\AV-Waterflow-GUI-V2\src\errorIcon.png"``` will replace ```"./src/errorIcon.png"```
 
 ## Future Work
-I plan to try implementing csv logging in the future (hence pandas import) but it will be some time before I figure out an optimal solution for that, and whether PT readings should be included.
+I plan to try implementing csv logging in the future (hence pandas import) but it will be some time before I figure out an optimal solution for that, and whether PT readings should be included. Additionally, the threading should really be done so that read is constantly happening and is interrupted when send from GUI side occurs, but for now this should suffice. 
 
 ## GUI Layout
 <img src="./src/GUIscreenshot.png" alt="" title="GUIexample">
