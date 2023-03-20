@@ -13,7 +13,7 @@ from threading import Timer
 
 import serial
 import serial.tools.list_ports
-from PyQt6.QtCore import QDateTime, QObject, Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QDateTime, QObject, Qt, QThread, QMutex, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
                              QLineEdit, QMainWindow, QMessageBox, QPushButton,
@@ -106,9 +106,9 @@ class SerialWorker(QObject):
     """GUI Serial Manager Thread."""
 
     msg = pyqtSignal(str)
-    finished = pyqtSignal()
+    cleanup = pyqtSignal()
 
-    def __init__(self, connection: SerialComm, pins: str, parent=None) -> None:
+    def __init__(self, connection: SerialComm, lock: QMutex, pins: str, parent=None) -> None:
         """Constructs new Serial Worker.
 
         Args:
@@ -119,7 +119,9 @@ class SerialWorker(QObject):
         super().__init__(parent)
         self.serialConnection = connection
         self.pins = pins
+        self.mutex = lock
         self.active = False
+        self.program = True
 
     def setPins(self, newPins: str) -> None:
         """Sets new pins.
@@ -132,29 +134,31 @@ class SerialWorker(QObject):
     def run(self) -> None:
         """Sends initial toggle and continuously reads
         until indicated to stop, then toggles again."""
-        self.active = True
-        message = self.pins + "\n"
-        self.serialConnection.sendMessage(message)
-
         # read serial
-        while self.active:
-            received = self.serialConnection.readEolLine()
-            if not received:
-                continue
-            self.msg.emit(received)
+        while self.program:
+            if self.mutex.tryLock():
+                received = self.serialConnection.readEolLine()
+                time.sleep(0.05)
+                self.mutex.unlock()
+                time.sleep(0.02)
+                if not received:
+                    continue
+                self.msg.emit(received)
+        self.cleanup.emit()
 
-        # toggle
+    def sendToggle(self) -> None:
+        """Sends message and indicates preset state."""
+        message = self.pins + "\n"
+        self.mutex.lock()
         self.serialConnection.sendMessage(message)
-        flush = self.serialConnection.receiveMessage()
-        for line in flush.split("\n"):
-            self.msg.emit(line)
-
-        # exit
-        self.finished.emit()
-
-    def interrupt(self) -> None:
-        """Stops threading loop."""
-        self.active = False
+        if not self.active:
+            self.active = True
+        else:
+            flush = self.serialConnection.receiveMessage()
+            for line in flush.split("\n"):
+                self.msg.emit(line)
+            self.active = False
+        self.mutex.unlock()
 
 
 # MAIN WINDOW -----------------------------------------------------------------|
@@ -196,13 +200,14 @@ class WaterflowGUI(QMainWindow):
         """Sets up threading, serial worker and signals/slots."""
         self.serialThread = QThread()
         self.serialConnection = self.setupConnection(self.port, BAUDRATE)
-        self.serialWorker = SerialWorker(self.serialConnection, "")
+        self.serialLock = QMutex()
+        self.serialWorker = SerialWorker(self.serialConnection, self.serialLock, "")
         self.serialWorker.moveToThread(self.serialThread)
         self.serialThread.started.connect(self.serialWorker.run)
-        self.serialWorker.finished.connect(self.serialThread.quit)
-        self.serialInterrupt.connect(self.endPreset)
+        self.serialWorker.cleanup.connect(self.serialThread.quit)
         self.serialWorker.msg.connect(self.displayPrint)
-        self.serialWorker.finished.connect(self.enterData)
+        self.serialInterrupt.connect(self.endPreset)
+        self.serialThread.start()
 
     def selectPort(self) -> bool:
         """Checks for available ports and asks for a selection.
@@ -278,15 +283,18 @@ class WaterflowGUI(QMainWindow):
 
     def presetRun(self) -> None:
         """Starts a preset toggle/read thread with a timeout."""
-        # validate inputs
         if not self.inPreset:
+            # validate inputs
             try:
                 seconds = float(self.timeInterval.text())
             except ValueError:
                 self.createMessageBox(ERROR, "Time must be a number.")
                 return
-
-            self.enableDisplayAccess(False)
+            pins = self.toggledPins.text()
+            if len(set(pins)) < len(pins):
+                self.createMessageBox(ERROR, "Duplicate pin detected - please try again.")
+                return
+            self.displayAccessEnabled(False)
             # info log
             log = (
                 f"\n{QDateTime.currentDateTime().toString(DATE_TIME_FORMAT)}\n"
@@ -299,23 +307,24 @@ class WaterflowGUI(QMainWindow):
             # thread timeout and reading
             self.serialWorker.setPins(self.toggledPins.text())
             self.inPreset = True
+            self.serialWorker.sendToggle()
             self.timeout = Timer(seconds, function=self.sendInterrupt)
-            self.serialThread.start()
             self.timeout.start()
 
     def endPreset(self) -> None:
         """Stops threading loop."""
         if self.inPreset:
-            self.serialWorker.active = False
+            self.serialWorker.sendToggle()
             self.timeout.cancel()
             self.inPreset = False
-            self.enableDisplayAccess(True)
+            self.enterData()
+            self.displayAccessEnabled(True)
 
     def sendInterrupt(self) -> None:
         """Emits serial stop signal."""
         self.serialInterrupt.emit()
 
-    def enableDisplayAccess(self, access: bool) -> None:
+    def displayAccessEnabled(self, access: bool) -> None:
         """Enables or disables display access.
 
         Args:
@@ -379,6 +388,8 @@ class WaterflowGUI(QMainWindow):
             sysLog.write(
                 "---------------------------------------------------------------------------\n"
             )
+        self.serialWorker.program = False
+        time.sleep(0.1)
         if self.serialConnection.connection.is_open:
             self.serialConnection.close()
 
@@ -425,7 +436,7 @@ class WaterflowGUI(QMainWindow):
         self.startPresetButton.clicked.connect(self.presetRun)
         self.cancelPresetButton = QPushButton("Cancel Preset")
         self.cancelPresetButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.cancelPresetButton.clicked.connect(self.endPreset)
+        self.cancelPresetButton.clicked.connect(self.sendInterrupt)
         self.enterDataButton = QPushButton("Enter Data")
         self.enterDataButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.enterDataButton.clicked.connect(self.enterData)
