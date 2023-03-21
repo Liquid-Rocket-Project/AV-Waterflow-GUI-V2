@@ -120,7 +120,6 @@ class SerialWorker(QObject):
         self.serialConnection = connection
         self.pins = pins
         self.mutex = lock
-        self.active = False
         self.program = True
 
     def setPins(self, newPins: str) -> None:
@@ -146,19 +145,17 @@ class SerialWorker(QObject):
                 self.msg.emit(received)
         self.cleanup.emit()
 
-    def sendToggle(self) -> None:
+    def sendToggle(self, pins: str | None = None) -> None:
         """Sends message and indicates preset state."""
-        message = self.pins + "\n"
-        self.mutex.lock()
-        self.serialConnection.sendMessage(message)
-        if not self.active:
-            self.active = True
+        if pins:
+            message = pins + "\n"
         else:
-            flush = self.serialConnection.receiveMessage()
-            for line in flush.split("\n"):
-                self.msg.emit(line)
-            self.active = False
-        self.mutex.unlock()
+            message = self.pins + "\n"
+        while True:
+            if self.mutex.tryLock():
+                self.serialConnection.sendMessage(message)
+                self.mutex.unlock()
+                break
 
 
 # MAIN WINDOW -----------------------------------------------------------------|
@@ -320,6 +317,9 @@ class WaterflowGUI(QMainWindow):
             self.enterData()
             self.displayAccessEnabled(True)
 
+    def sendSpecificToggle(self) -> None:
+        self.serialWorker.sendToggle(self.specificCommand.text())
+
     def sendInterrupt(self) -> None:
         """Emits serial stop signal."""
         self.serialInterrupt.emit()
@@ -332,6 +332,7 @@ class WaterflowGUI(QMainWindow):
         """
         self.enterDataButton.setEnabled(access)
         self.startPresetButton.setEnabled(access)
+        self.sendCommandButton.setEnabled(access)
         self.testName.setReadOnly(not access)
         self.timeInterval.setReadOnly(not access)
         self.toggledPins.setReadOnly(not access)
@@ -412,23 +413,31 @@ class WaterflowGUI(QMainWindow):
         self.monitor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.generalLayout.addWidget(self.monitor, 0, 0)
 
+    @staticmethod
+    def createTextField(width: int, height: int) -> QLineEdit:
+        label = QLineEdit()
+        label.setMaximumSize(width, height)
+        return label
+
     def createSettings(self):
         """Create right side settings layout."""
         # area setup
         self.settings = QGridLayout()
         title = QLabel("Presets: ")
-        bottomSpacer = QSpacerItem(10, 250)
+        bottomSpacer = QSpacerItem(10, 150)
 
         # input boxes
-        self.timeInterval = QLineEdit()
-        self.timeInterval.setMaximumHeight(LINE_HEIGHT)
-        self.timeInterval.setMaximumWidth(SETTING_WIDTH)
-        self.toggledPins = QLineEdit()
-        self.toggledPins.setMaximumHeight(LINE_HEIGHT)
-        self.toggledPins.setMaximumWidth(SETTING_WIDTH)
-        self.testName = QLineEdit()
-        self.testName.setMaximumHeight(LINE_HEIGHT)
-        self.testName.setMaximumWidth(2 * SETTING_WIDTH + 10)
+        self.timeInterval = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.toggledPins = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.testName = self.createTextField(2 * SETTING_WIDTH + 10, LINE_HEIGHT)
+        self.specificCommand = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+
+        # pin labels
+        self.pin1 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin2 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin3 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin4 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin5 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
 
         # input buttons
         self.startPresetButton = QPushButton("Start Preset")
@@ -440,6 +449,9 @@ class WaterflowGUI(QMainWindow):
         self.enterDataButton = QPushButton("Enter Data")
         self.enterDataButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.enterDataButton.clicked.connect(self.enterData)
+        self.sendCommandButton = QPushButton("Send Command")
+        self.sendCommandButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.sendCommandButton.clicked.connect(self.sendSpecificToggle)
 
         # settings layout
         self.settings.addWidget(title, 1, 0)
@@ -452,7 +464,21 @@ class WaterflowGUI(QMainWindow):
         self.settings.addWidget(self.startPresetButton, 6, 0)
         self.settings.addWidget(self.cancelPresetButton, 6, 1)
         self.settings.addWidget(self.enterDataButton, 8, 0, 1, 2)
-        self.settings.addItem(bottomSpacer, 9, 0)
+        self.settings.addWidget(QLabel("Toggle Pins: "), 9, 0)
+        self.settings.addWidget(self.specificCommand, 10, 0)
+        self.settings.addWidget(self.sendCommandButton, 11, 0)
+        self.settings.addWidget(QLabel("Pin Control Equivalencies: "), 12, 0)
+        self.settings.addWidget(QLabel("Pin 1: "), 13, 0)
+        self.settings.addWidget(self.pin1, 13, 1)
+        self.settings.addWidget(QLabel("Pin 2: "), 14, 0)
+        self.settings.addWidget(self.pin2, 14, 1)
+        self.settings.addWidget(QLabel("Pin 3: "), 15, 0)
+        self.settings.addWidget(self.pin3, 15, 1)
+        self.settings.addWidget(QLabel("Pin 4: "), 16, 0)
+        self.settings.addWidget(self.pin4, 16, 1)
+        self.settings.addWidget(QLabel("Pin 5: "), 17, 0)
+        self.settings.addWidget(self.pin5, 17, 1)
+        self.settings.addItem(bottomSpacer, 18, 0)
         self.generalLayout.addLayout(self.settings, 0, 1)
 
 
