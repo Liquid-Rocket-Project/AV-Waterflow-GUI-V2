@@ -72,8 +72,9 @@ class SerialComm:
     def readEolLine(self) -> str:
         """Reads line specifically using LF for eol.
 
-        Reference: lou
-        https://stackoverflow.com/questions/16470903/pyserial-2-6-specify-end-of-line-in-readline
+        EoL readline by: lou under CC BY-SA 3.0
+        src: https://stackoverflow.com/questions/16470903/pyserial-2-6-specify-end-of-line-in-readline
+        Changes have been made to adjust for integration in this program.
         """
         eol = b"\n"
         eolLen = len(eol)
