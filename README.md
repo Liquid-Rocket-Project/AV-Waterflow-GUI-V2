@@ -12,7 +12,7 @@ Second iteration of the waterflow GUI. Simplified to only preset usage, updated 
 - If you do not execute the program in the correct directory, you may find that the program cannot "find" certain files. If you are having this issue, try to switch to the correct directory. Alternatively, you can try editing the constants (in blue caps) at the top of the file. Look for the ones that indicate a file path, and replace them with the full path of the file. For example, ```r"C:\Users\Bobjoe\programs\AV-Waterflow-GUI-V2\src\errorIcon.png"``` will replace ```"./src/errorIcon.png"```
 
 ## Future Work
-I plan to try implementing csv logging in the future (hence pandas import) but it will be some time before I figure out an optimal solution for that, and also what data exactly is desired. Additionally, the sooner we can finalize pin numbers and figure out how to display only desired PT values in the monitor the better, they will currently pollute the feed and logs.
+I plan to try implementing csv logging in the future (hence pandas import) but it will be some time before I figure out an optimal solution for that, and also what data exactly is desired. Additionally, the sooner we can finalize pin numbers and figure out how to display only desired PT values in the monitor the better, they will currently pollute the feed and logs. It would also be nice to make the program as firmware/hardware agnostic and customizable as possible, but more consideration will have to be made for that.
 
 ## GUI Layout
 <img src="./src/GUIscreenshot.png" alt="" title="GUIexample">
