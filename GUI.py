@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
 BAUDRATE = 9600
 DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
 PIN_INIT = "12345"
+AUTO_INIT = False  # verifies connection works on startup, no longer recommended
+PT_DATA_FLAG = "d"
 
 # CONSTANTS -------------------------------------------------------------------|
 DATE = QDateTime.currentDateTime().toString("MM-dd-yy")
@@ -128,7 +130,7 @@ class SerialWorker(QObject):
         Args:
             newPins(str): a new set of pins to toggle.
         """
-        self.pins = newPins
+        self.pins = newPins + PT_DATA_FLAG
 
     def run(self) -> None:
         """Sends initial toggle and continuously reads
@@ -146,7 +148,11 @@ class SerialWorker(QObject):
         self.cleanup.emit()
 
     def sendToggle(self, pins: str | None = None) -> None:
-        """Sends message and indicates preset state."""
+        """Sends message, which by default is the pins instance variable.
+        
+        Args:
+            pins(str): optional argument to indicate pins to toggle.
+        """
         if pins:
             message = pins + "\n"
         else:
@@ -239,14 +245,26 @@ class WaterflowGUI(QMainWindow):
         Returns:
             bool: True if the user is ready for setup, false if not.
         """
+        if AUTO_INIT:
+            warning = (
+            "Setup will cause the valves to open and close.\n"
+            + "Continue if this is safe, or cancel to exit."
+            )
+        else:
+            warning = (
+                "Please be aware that clicking buttons once "
+                + "the GUI initiates may cause valves to open. "
+                + "Do NOT continue unless ALL valve operations are safe."
+            )
+
         conf = QMessageBox(
             QMessageBox.Icon.Warning,
             "Setup Confirmation",
-            "Setup will cause the valves to open and close.\n"
-            + "Continue if this is safe, or cancel to exit.",
+            warning,
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
             self.centralWidget(),
         )
+        conf.setDefaultButton(QMessageBox.StandardButton.Cancel)
         ok = conf.exec()
 
         if ok == QMessageBox.StandardButton.Cancel:  # check ok/cancel
@@ -266,15 +284,16 @@ class WaterflowGUI(QMainWindow):
         ser = SerialComm(selectedPort, baud)
         ser.sendMessage(PIN_INIT + "\n")
 
+        if AUTO_INIT:
         # ensure messages are sending
-        valid = False
-        while not valid:
-            ser.sendMessage("12345" + "\n")
-            rec = ser.receiveMessage()
-            if str(rec)[:10] != "Toggle PIN":  # verify pin toggle message
+            valid = False
+            while not valid:
                 ser.sendMessage("12345" + "\n")
-                continue
-            valid = True
+                rec = ser.receiveMessage()
+                if str(rec)[:10] != "Toggle PIN":  # verify pin toggle message
+                    ser.sendMessage("12345" + "\n")
+                    continue
+                valid = True
 
         return ser
 
@@ -318,7 +337,12 @@ class WaterflowGUI(QMainWindow):
             self.displayAccessEnabled(True)
 
     def sendSpecificToggle(self) -> None:
-        self.serialWorker.sendToggle(self.specificCommand.text())
+        """Sends a specific message to toggle without starting a preset."""
+        command = self.specificCommand.text()
+        if len(set(command)) < len(command):
+                self.createMessageBox(ERROR, "Duplicate pin detected - please try again.")
+                return
+        self.serialWorker.sendToggle(command)
 
     def sendInterrupt(self) -> None:
         """Emits serial stop signal."""
@@ -354,6 +378,7 @@ class WaterflowGUI(QMainWindow):
 
         Args:
             string(str): the string to display and log
+            reformat(bool | None): add strFormat if True, otherwise do not
         """
         if reformat:
             string = self.strFormat(string)
@@ -415,6 +440,12 @@ class WaterflowGUI(QMainWindow):
 
     @staticmethod
     def createTextField(width: int, height: int) -> QLineEdit:
+        """Creates a text field.
+        
+        Args:
+            width(int): maximum width
+            height(int): maximum height
+        """
         label = QLineEdit()
         label.setMaximumSize(width, height)
         return label
