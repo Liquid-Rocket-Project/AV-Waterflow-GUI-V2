@@ -198,6 +198,9 @@ class WaterflowGUI(QMainWindow):
             reformat=False
         )
 
+        self.screenAccess = True
+        self.toggleScreenLock()
+
     # SERIAL FUNCTIONS
 
     def threadingSetup(self) -> None:
@@ -311,7 +314,7 @@ class WaterflowGUI(QMainWindow):
             if len(set(pins)) < len(pins):
                 self.createMessageBox(ERROR, "Duplicate pin detected - please try again.")
                 return
-            self.displayAccessEnabled(False)
+            self.displayAccessPresetToggle(False)
             # info log
             log = (
                 f"\n{QDateTime.currentDateTime().toString(DATE_TIME_FORMAT)}\n"
@@ -335,7 +338,7 @@ class WaterflowGUI(QMainWindow):
             self.timeout.cancel()
             self.inPreset = False
             self.enterData()
-            self.displayAccessEnabled(True)
+            self.displayAccessPresetToggle(True)
 
     def sendSpecificToggle(self) -> None:
         """Sends a specific message to toggle without starting a preset."""
@@ -349,7 +352,7 @@ class WaterflowGUI(QMainWindow):
         """Emits serial stop signal."""
         self.serialInterrupt.emit()
 
-    def displayAccessEnabled(self, access: bool) -> None:
+    def displayAccessPresetToggle(self, access: bool) -> None:
         """Enables or disables display access.
 
         Args:
@@ -358,6 +361,7 @@ class WaterflowGUI(QMainWindow):
         self.enterDataButton.setEnabled(access)
         self.startPresetButton.setEnabled(access)
         self.sendCommandButton.setEnabled(access)
+        self.screenLock.setEnabled(access)
         self.testName.setReadOnly(not access)
         self.timeInterval.setReadOnly(not access)
         self.toggledPins.setReadOnly(not access)
@@ -439,6 +443,24 @@ class WaterflowGUI(QMainWindow):
         self.monitor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.generalLayout.addWidget(self.monitor, 0, 0)
 
+    def toggleScreenLock(self) -> None:
+        """Locks or unlocks all fields on the screen, including buttons and text."""
+        self.screenAccess = not self.screenAccess
+        self.enterDataButton.setEnabled(self.screenAccess)
+        self.startPresetButton.setEnabled(self.screenAccess)
+        self.sendCommandButton.setEnabled(self.screenAccess)
+        self.cancelPresetButton.setEnabled(self.screenAccess)
+        self.testName.setReadOnly(not self.screenAccess)
+        self.timeInterval.setReadOnly(not self.screenAccess)
+        self.toggledPins.setReadOnly(not self.screenAccess)
+        self.specificCommand.setReadOnly(not self.screenAccess)
+
+        self.pin1.setReadOnly(not self.screenAccess)
+        self.pin2.setReadOnly(not self.screenAccess)
+        self.pin3.setReadOnly(not self.screenAccess)
+        self.pin4.setReadOnly(not self.screenAccess)
+        self.pin5.setReadOnly(not self.screenAccess)
+
     @staticmethod
     def createTextField(width: int, height: int) -> QLineEdit:
         """Creates a text field.
@@ -453,10 +475,10 @@ class WaterflowGUI(QMainWindow):
 
     def createSettings(self):
         """Create right side settings layout."""
-        # area setup
+        # area setup (all of the lines and buttons should prob be made dictionary accessible)
         self.settings = QGridLayout()
         title = QLabel("Presets: ")
-        bottomSpacer = QSpacerItem(10, 150)
+        bottomSpacer = QSpacerItem(10, 100)
 
         # input boxes
         self.timeInterval = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
@@ -484,6 +506,9 @@ class WaterflowGUI(QMainWindow):
         self.sendCommandButton = QPushButton("Send Command")
         self.sendCommandButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sendCommandButton.clicked.connect(self.sendSpecificToggle)
+        self.screenLock = QPushButton("Toggle Lock")
+        self.screenLock.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.screenLock.clicked.connect(self.toggleScreenLock)
 
         # settings layout
         self.settings.addWidget(title, 1, 0)
@@ -499,6 +524,8 @@ class WaterflowGUI(QMainWindow):
         self.settings.addWidget(QLabel("Toggle Pins: "), 9, 0)
         self.settings.addWidget(self.specificCommand, 10, 0)
         self.settings.addWidget(self.sendCommandButton, 11, 0)
+        self.settings.addWidget(QLabel("Safety Lock: "), 9, 1)
+        self.settings.addWidget(self.screenLock, 10, 1)
         self.settings.addWidget(QLabel("Pin Control Equivalencies: "), 12, 0)
         self.settings.addWidget(QLabel("Pin 1: "), 13, 0)
         self.settings.addWidget(self.pin1, 13, 1)
