@@ -51,6 +51,7 @@ WARNING = 0
 ERROR = 1
 MESSAGE_LABELS = ("Warning", "Error")
 
+# DATA DISPLAY HANDLERS -------------------------------------------------------|
 class PinFormat:
     """String formatter for live display."""
     
@@ -78,7 +79,8 @@ class PinFormat:
     def __str__(self) -> str:
         return f"Pin {self.num}: {self.valve} | {self.pressure}"
 
-class PinLabelUpdater:
+class ValveStateUpdater:
+    """Valve state updater interface."""
 
     def __init__(self, label: QLabel, format: PinFormat) -> None:
         self.label = label
@@ -95,7 +97,8 @@ class PinLabelUpdater:
         self.format.editValveState(state)
         self.label.setText(str(self.format))
 
-class ValveUpdater:
+class PressureUpdater:
+    """Valve pressure updater interface."""
 
     def __init__(self, label: QLabel, format: PinFormat) -> None:
         self.label = label
@@ -273,7 +276,10 @@ class WaterflowGUI(QMainWindow):
     # SERIAL FUNCTIONS
 
     def threadingSetup(self) -> None:
-        """Sets up threading, serial worker and signals/slots."""
+        """Sets up threading, serial worker and signals/slots.
+        
+        *Serial Window Core
+        """
         self.serialThread = QThread()
         self.serialConnection = self.setupConnection(self.port, BAUDRATE)
         self.serialLock = QMutex()
@@ -290,6 +296,8 @@ class WaterflowGUI(QMainWindow):
 
         Returns:
             bool: True setup is successful, False otherwise
+        
+        *Serial Window Core
         """
         ports = serial.tools.list_ports.comports()
         if len(ports) < 1:
@@ -317,6 +325,8 @@ class WaterflowGUI(QMainWindow):
 
         Returns:
             bool: True if the user is ready for setup, false if not.
+        
+        *Serial Window Core
         """
         warning = (
             "Please be aware that clicking buttons once "
@@ -346,6 +356,8 @@ class WaterflowGUI(QMainWindow):
             baud(int): the desired baudrate
         Returns:
             SerialComm: a serial connection object
+        
+        *Serial Window Core
         """
         ser = SerialComm(selectedPort, baud)
         ser.sendMessage(PIN_INIT + "\n")
@@ -382,7 +394,7 @@ class WaterflowGUI(QMainWindow):
             self.timeout.start()
 
     def endPreset(self) -> None:
-        """Stops threading loop."""
+        """Stops preset loop."""
         if self.inPreset:
             self.serialWorker.sendToggle()
             self.timeout.cancel()
@@ -391,15 +403,21 @@ class WaterflowGUI(QMainWindow):
             self.displayAccessPresetToggle(True)
 
     def sendSpecificToggle(self) -> None:
-        """Sends a specific message to toggle without starting a preset."""
+        """Sends a specific message to toggle without starting a preset.
+        
+        *Serial Window Core
+        """
         command = self.specificCommand.text()
         if len(set(command)) < len(command):
-                self.createMessageBox(ERROR, "Duplicate pin detected - please try again.")
-                return
+            self.createMessageBox(ERROR, "Duplicate pin detected - please try again.")
+            return
         self.serialWorker.sendToggle(command)
 
     def sendInterrupt(self) -> None:
-        """Emits serial stop signal."""
+        """Emits serial stop signal.
+        
+        *Serial Window Core
+        """
         self.serialInterrupt.emit()
 
     def displayAccessPresetToggle(self, access: bool) -> None:
@@ -487,7 +505,6 @@ class WaterflowGUI(QMainWindow):
     def createDisplayArea(self) -> None:
         """Create text display area."""
         self.monitor = QTextEdit()
-        self.monitor.ensureCursorVisible()
         self.monitor.setReadOnly(True)
         self.monitor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.generalLayout.addWidget(self.monitor, 0, 0)
@@ -518,6 +535,8 @@ class WaterflowGUI(QMainWindow):
         
         Returns:
             list[tuple]: a list of tuples with destination/value pairs
+        
+        *Serial Window Core
         """
         if VALVE_TAG in data:
             pin, value = data.strip(VALVE_TAG).split(VALVE_SEP)
@@ -534,6 +553,8 @@ class WaterflowGUI(QMainWindow):
         
         Args:
             dataset(list): list of parsed data in the format destination, value
+        
+        *Serial Window Core
         """
         for dest, value in dataset:
             try:
@@ -547,8 +568,11 @@ class WaterflowGUI(QMainWindow):
 
         Args:
             string(str): the incoming data
+        
+        *Serial Window Core
         """
-        self.displayPrint(string)
+        if self.inPreset:
+            self.displayPrint(string)
         data = self.parseData(string)
         self.updateDisplay(data)
 
@@ -605,8 +629,8 @@ class WaterflowGUI(QMainWindow):
         for i in range (1, 6):
             label = QLabel(f"{i}")
             formatter = PinFormat(f"{i}")
-            self.dynamicLabels[f"{PIN}{i}"] = PinLabelUpdater(label, formatter)
-            self.dynamicLabels[f"{PRESSURE}{i}"] = ValveUpdater(label, formatter)
+            self.dynamicLabels[f"{PIN}{i}"] = ValveStateUpdater(label, formatter)
+            self.dynamicLabels[f"{PRESSURE}{i}"] = PressureUpdater(label, formatter)
 
         # input buttons
         self.startPresetButton = self.createButton("Start Preset", self.presetRun)
