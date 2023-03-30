@@ -26,6 +26,16 @@ PIN_INIT = "12345"
 AUTO_INIT = False  # verifies connection works on startup, no longer recommended
 PT_DATA_FLAG = "d"
 
+# Firmware tags
+PRESSURE_TAG = "P"
+PRESSURE_SEP = ", "
+VALVE_TAG = "Toggle PIN"
+VALVE_SEP = " "
+
+# Software hashes
+PIN = "PIN"
+PRESSURE = "PRESS"
+
 # CONSTANTS -------------------------------------------------------------------|
 DATE = QDateTime.currentDateTime().toString("MM-dd-yy")
 START_TIME = QDateTime.currentDateTime().toString("MM-dd-yy-hh-mm")
@@ -41,6 +51,66 @@ BOX_SIZE = 300
 WARNING = 0
 ERROR = 1
 MESSAGE_LABELS = ("Warning", "Error")
+
+class PinFormat:
+    """String formatter for live display."""
+    
+    def __init__(self, pin: str, valveState: str = "C", pressure: str = "n/a") -> None:
+        self.num = pin
+        self.valve = valveState
+        self.pressure = pressure
+    
+    def editValveState(self, valveState: str) -> None:
+        """Edits the valve state.
+        
+        Args:
+            valveState(str): the valve state data
+        """
+        self.valve = valveState
+
+    def editPressure(self, pressure: str) -> None:
+        """Edits the pressure.
+        
+        Args:
+            pressure(str): the pressure state data
+        """
+        self.pressure = pressure
+
+    def __str__(self) -> str:
+        return f"Pin {self.num}: {self.valve} | {self.pressure}"
+
+class PinLabelUpdater:
+
+    def __init__(self, label: QLabel, format: PinFormat) -> None:
+        self.label = label
+        self.format = format
+        self.label.setText(str(self.format))
+
+    def update(self, valveState: str) -> None:
+        """Duck typed update function to update valve state.
+        
+        Args:
+            valveState(str): the valve state value
+        """
+        state = "O" if valveState == "1" else "C"
+        self.format.editValveState(state)
+        self.label.setText(str(self.format))
+
+class ValveUpdater:
+
+    def __init__(self, label: QLabel, format: PinFormat) -> None:
+        self.label = label
+        self.format = format
+        self.label.setText(str(self.format))
+    
+    def update(self, pressure: str) -> None:
+        """Duck typed update function to update valve state.
+        
+        Args:
+            pressure(str): the pressure state value
+        """
+        self.format.editPressure(pressure)
+        self.label.setText(str(self.format))
 
 # SERIAL HELPER ---------------------------------------------------------------|
 class SerialComm:
@@ -212,7 +282,7 @@ class WaterflowGUI(QMainWindow):
         self.serialWorker.moveToThread(self.serialThread)
         self.serialThread.started.connect(self.serialWorker.run)
         self.serialWorker.cleanup.connect(self.serialThread.quit)
-        self.serialWorker.msg.connect(self.displayPrint)
+        self.serialWorker.msg.connect(self.displayControl)
         self.serialInterrupt.connect(self.endPreset)
         self.serialThread.start()
 
@@ -377,7 +447,6 @@ class WaterflowGUI(QMainWindow):
         """
         return QDateTime.currentDateTime().toString(DATE_TIME_FORMAT) + string.strip()
 
-    @pyqtSlot(str)
     def displayPrint(self, string: str, reformat=True) -> None:
         """Displays to monitor and logs data.
 
@@ -461,6 +530,48 @@ class WaterflowGUI(QMainWindow):
         self.pin4.setReadOnly(not self.screenAccess)
         self.pin5.setReadOnly(not self.screenAccess)
 
+    def parseData(self, data: str) -> list[tuple]:
+        """Parses incoming data to destination/value pairs.
+
+        Args:
+            data(str): the incoming data
+        
+        Returns:
+            list[tuple]: a list of tuples with destination/value pairs
+        """
+        if VALVE_TAG in data:
+            pin, value = data.strip(VALVE_TAG).split(VALVE_SEP)
+            return [(PIN + pin, value)]
+        if PRESSURE_SEP in data:
+            readings = []
+            for i, val in enumerate(data.split(PRESSURE_SEP)):
+                readings.append((f"{PRESSURE}{i + 1}", val))
+            return readings
+        return []
+
+    def updateDisplay(self, dataset: list) -> None:
+        """Updates display values in the window dictionaries.
+        
+        Args:
+            dataset(list): list of parsed data in the format destination, value
+        """
+        for dest, value in dataset:
+            try:
+                self.dynamicLabels[dest].update(value.strip())
+            except KeyError:
+                continue
+
+    @pyqtSlot(str)
+    def displayControl(self, string: str) -> None:
+        """Prints to display monitor, parses data, and updates live labels.
+
+        Args:
+            string(str): the incoming data
+        """
+        self.displayPrint(string)
+        data = self.parseData(string)
+        self.updateDisplay(data)
+
     @staticmethod
     def createTextField(width: int, height: int) -> QLineEdit:
         """Creates a text field.
@@ -472,6 +583,22 @@ class WaterflowGUI(QMainWindow):
         label = QLineEdit()
         label.setMaximumSize(width, height)
         return label
+
+    @staticmethod
+    def createButton(label: str, function) -> QPushButton:
+        """Creates a button.
+        
+        Args:
+            label(str): the button label
+            function: the function to connect the button to
+        
+        Returns:
+            QPushButton: the created button
+        """
+        button = QPushButton(label)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.clicked.connect(function)
+        return button
 
     def createSettings(self):
         """Create right side settings layout."""
@@ -486,29 +613,27 @@ class WaterflowGUI(QMainWindow):
         self.testName = self.createTextField(2 * SETTING_WIDTH + 10, LINE_HEIGHT)
         self.specificCommand = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
 
-        # pin labels
+        # pin marking labels
         self.pin1 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
         self.pin2 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
         self.pin3 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
         self.pin4 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
         self.pin5 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
 
+        # status labels
+        self.dynamicLabels = {}
+        for i in range (1, 6):
+            label = QLabel(f"{i}")
+            formatter = PinFormat(f"{i}")
+            self.dynamicLabels[f"{PIN}{i}"] = PinLabelUpdater(label, formatter)
+            self.dynamicLabels[f"{PRESSURE}{i}"] = ValveUpdater(label, formatter)
+
         # input buttons
-        self.startPresetButton = QPushButton("Start Preset")
-        self.startPresetButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.startPresetButton.clicked.connect(self.presetRun)
-        self.cancelPresetButton = QPushButton("Cancel Preset")
-        self.cancelPresetButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.cancelPresetButton.clicked.connect(self.sendInterrupt)
-        self.enterDataButton = QPushButton("Enter Data")
-        self.enterDataButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.enterDataButton.clicked.connect(self.enterData)
-        self.sendCommandButton = QPushButton("Send Command")
-        self.sendCommandButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sendCommandButton.clicked.connect(self.sendSpecificToggle)
-        self.screenLock = QPushButton("Toggle Lock")
-        self.screenLock.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.screenLock.clicked.connect(self.toggleScreenLock)
+        self.startPresetButton = self.createButton("Start Preset", self.presetRun)
+        self.cancelPresetButton = self.createButton("Cancel Preset", self.sendInterrupt)
+        self.enterDataButton = self.createButton("Enter Data", self.enterData)
+        self.sendCommandButton = self.createButton("Send Command", self.sendSpecificToggle)
+        self.screenLock = self.createButton("Toggle Lock", self.toggleScreenLock)
 
         # settings layout
         self.settings.addWidget(title, 1, 0)
@@ -527,17 +652,16 @@ class WaterflowGUI(QMainWindow):
         self.settings.addWidget(QLabel("Safety Lock: "), 9, 1)
         self.settings.addWidget(self.screenLock, 10, 1)
         self.settings.addWidget(QLabel("Pin Control Equivalencies: "), 12, 0)
-        self.settings.addWidget(QLabel("Pin 1: "), 13, 0)
+        pinBegin = 13
+        for i in range (0, 5):
+            self.settings.addWidget(self.dynamicLabels[f"{PIN}{i + 1}"].label, pinBegin + i, 0)
         self.settings.addWidget(self.pin1, 13, 1)
-        self.settings.addWidget(QLabel("Pin 2: "), 14, 0)
         self.settings.addWidget(self.pin2, 14, 1)
-        self.settings.addWidget(QLabel("Pin 3: "), 15, 0)
         self.settings.addWidget(self.pin3, 15, 1)
-        self.settings.addWidget(QLabel("Pin 4: "), 16, 0)
         self.settings.addWidget(self.pin4, 16, 1)
-        self.settings.addWidget(QLabel("Pin 5: "), 17, 0)
         self.settings.addWidget(self.pin5, 17, 1)
-        self.settings.addItem(bottomSpacer, 18, 0)
+        self.settings.addWidget(QLabel(f"*Note: Timestamps on data in are not 100 % accurate."), 18, 0, 1, 2)
+        self.settings.addItem(bottomSpacer, 19, 0)
         self.generalLayout.addLayout(self.settings, 0, 1)
 
 
