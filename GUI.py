@@ -23,7 +23,6 @@ from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
 BAUDRATE = 9600
 DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
 PIN_INIT = "12345"
-AUTO_INIT = False  # verifies connection works on startup, no longer recommended
 PT_DATA_FLAG = "d"
 
 # Firmware tags
@@ -319,18 +318,11 @@ class WaterflowGUI(QMainWindow):
         Returns:
             bool: True if the user is ready for setup, false if not.
         """
-        if AUTO_INIT:
-            warning = (
-            "Setup will cause the valves to open and close.\n"
-            + "Continue if this is safe, or cancel to exit."
-            )
-        else:
-            warning = (
-                "Please be aware that clicking buttons once "
-                + "the GUI initiates may cause valves to open. "
-                + "Do NOT continue unless ALL valve operations are safe."
-            )
-
+        warning = (
+            "Please be aware that clicking buttons once "
+            + "the GUI initiates may cause valves to open. "
+            + "Do NOT continue unless ALL valve operations are safe."
+        )
         conf = QMessageBox(
             QMessageBox.Icon.Warning,
             "Setup Confirmation",
@@ -357,18 +349,6 @@ class WaterflowGUI(QMainWindow):
         """
         ser = SerialComm(selectedPort, baud)
         ser.sendMessage(PIN_INIT + "\n")
-
-        if AUTO_INIT:
-        # ensure messages are sending
-            valid = False
-            while not valid:
-                ser.sendMessage("12345" + "\n")
-                rec = ser.receiveMessage()
-                if str(rec)[:10] != "Toggle PIN":  # verify pin toggle message
-                    ser.sendMessage("12345" + "\n")
-                    continue
-                valid = True
-
         return ser
 
     def presetRun(self) -> None:
