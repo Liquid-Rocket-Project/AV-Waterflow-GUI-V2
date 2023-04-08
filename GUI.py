@@ -27,7 +27,7 @@ PIN_INIT = "12345"
 PT_DATA_FLAG = "d"
 
 # Firmware tags
-PRESSURE_TAG = ""
+PRESSURE_TAG = ""  # no tag rn
 PRESSURE_SEP = ", "
 VALVE_TAG = "Toggle PIN"
 VALVE_SEP = " "
@@ -222,7 +222,7 @@ class SerialWorker(QObject):
 
                     try:
                         received = self.serialConnection.readEolLine()
-                    except (serial.serialutil.SerialException, UnicodeDecodeError): # type: ignore
+                    except (serial.SerialException, UnicodeDecodeError):
                         self.error.emit()
                         error = True
                         received = None
@@ -391,7 +391,6 @@ class WaterflowGUI(QMainWindow):
         *Serial Window Core
         """
         ser = SerialComm(selectedPort, baud)
-        ser.sendMessage(PIN_INIT + "\n")
         return ser
 
     def errorExit(self) -> None:
