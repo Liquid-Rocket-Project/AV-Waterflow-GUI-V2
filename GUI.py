@@ -21,10 +21,9 @@ from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
                              QSpacerItem, QTextEdit, QWidget)
 
 # SETTINGS --------------------------------------------------------------------|
-BAUDRATE = 9600
+BAUDRATES = [9600, 115200]
 DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
-PIN_INIT = "12345"
-PT_DATA_FLAG = "d"
+PT_DATA_FLAG = "d"  # not used in firmware right now
 
 # Firmware tags
 PRESSURE_TAG = ""  # no tag rn
@@ -274,7 +273,7 @@ class WaterflowGUI(QMainWindow):
         self.createDisplayArea()
 
         # exit program if setup is unsuccessful
-        if not self.selectPort() or not self.verifySetupReady():
+        if not self.selectPort() or not self.selectBaud() or not self.verifySetupReady():
             sys.exit(1)
 
         # setup and connect serial with serial manager thread
@@ -297,7 +296,7 @@ class WaterflowGUI(QMainWindow):
         *Serial Window Core
         """
         self.serialThread = QThread()
-        self.serialConnection = self.setupConnection(self.port, BAUDRATE)
+        self.serialConnection = self.setupConnection(self.port, self.baud)
         self.serialLock = QMutex()
         self.serialWorker = SerialWorker(self.serialConnection, self.serialLock, "")
         self.serialWorker.moveToThread(self.serialThread)
@@ -349,6 +348,35 @@ class WaterflowGUI(QMainWindow):
 
         self.port = str(re.findall(r"COM[0-9]+", selection)[0])  # get port
 
+        return True
+
+    def selectBaud(self) -> bool:
+        """Asks for selection of a baudrate.
+
+        Returns:
+            bool: True setup is successful, False otherwise
+        """
+        selection, ok = QInputDialog().getItem(
+            self.centralWidget(),
+            "Baudrate select", 
+            "Select a baudrate:",
+            [str(rate) for rate in BAUDRATES],
+        )
+
+        if not ok:
+            return False
+        try:
+            self.baud = int(selection)
+        except ValueError:
+            error = QMessageBox(
+                QMessageBox.Icon.Critical,
+                "Setup Error",
+                "Setup error detected! Exiting program.",
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                self.centralWidget(),
+            )
+            error.exec()
+            return False
         return True
 
     def verifySetupReady(self) -> bool:
