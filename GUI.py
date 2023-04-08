@@ -319,11 +319,25 @@ class WaterflowGUI(QMainWindow):
                 "No COM ports available.\nPlease plug in devices before starting.",
             )
             return False
+        
+        warning = (
+            "ATTENTION:\nWhen selecting a port, look for \"Arduino\" or \"Serial-USB\" "
+            + "If you do not see an option like this, please cancel and check your USB connection."
+        )
+        conf = QMessageBox(
+            QMessageBox.Icon.Warning,
+            "Setup Confirmation",
+            warning,
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            self.centralWidget(),
+        )
+
+        conf.exec()
 
         selection, ok = QInputDialog().getItem(
             self.centralWidget(),
-            "COM select",
-            "Select a port: Look for \"Arduino\" or \"USB Serial\".",
+            "COM select", 
+            "Select a port:",
             [f"{desc}" for name, desc, hwid in ports],
         )
         if not ok:
