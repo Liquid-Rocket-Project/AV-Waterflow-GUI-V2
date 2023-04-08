@@ -60,7 +60,7 @@ class PinFormat:
         self.num = pin
         self.valve = valveState
         self.pressure = pressure
-    
+
     def editValveState(self, valveState: str) -> None:
         """Edits the valve state.
         
@@ -111,7 +111,7 @@ class PressureUpdater:
         self.label.setText(str(self.format))
     
     def update(self, pressure: str) -> None:
-        """Duck typed update function to update valve state.
+        """Duck typed update function to update valve pressure.
         
         Args:
             pressure(str): the pressure state value
@@ -219,17 +219,21 @@ class SerialWorker(QObject):
         while self.program:
             if not error:
                 if self.mutex.tryLock():
+
                     try:
                         received = self.serialConnection.readEolLine()
-                    except serial.serialutil.SerialException:
+                    except (serial.serialutil.SerialException, UnicodeDecodeError): # type: ignore
                         self.error.emit()
                         error = True
+                        received = None
+
                     time.sleep(0.05)
                     self.mutex.unlock()
                     time.sleep(0.02)
                     if not received:
                         continue
                     self.msg.emit(received)
+    
         self.cleanup.emit()
 
     def sendToggle(self, pins: str | None = None) -> None:
