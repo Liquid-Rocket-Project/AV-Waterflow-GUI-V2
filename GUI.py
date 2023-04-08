@@ -13,8 +13,9 @@ from threading import Timer
 
 import serial
 import serial.tools.list_ports
-from PyQt6.QtCore import QDateTime, QObject, Qt, QThread, QMutex, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import (QDateTime, QMutex, QObject, Qt, QThread,
+                          pyqtSignal, pyqtSlot)
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
                              QLineEdit, QMainWindow, QMessageBox, QPushButton,
                              QSpacerItem, QTextEdit, QWidget)
@@ -26,7 +27,7 @@ PIN_INIT = "12345"
 PT_DATA_FLAG = "d"
 
 # Firmware tags
-PRESSURE_TAG = "P"
+PRESSURE_TAG = ""
 PRESSURE_SEP = ", "
 VALVE_TAG = "Toggle PIN"
 VALVE_SEP = " "
@@ -55,7 +56,7 @@ MESSAGE_LABELS = ("Warning", "Error")
 class PinFormat:
     """String formatter for live display."""
     
-    def __init__(self, pin: str, valveState: str = "C", pressure: str = "n/a") -> None:
+    def __init__(self, pin: str, valveState: str = "CLOSED", pressure: str = "n/a") -> None:
         self.num = pin
         self.valve = valveState
         self.pressure = pressure
@@ -77,7 +78,7 @@ class PinFormat:
         self.pressure = pressure
 
     def __str__(self) -> str:
-        return f"Pin {self.num}: {self.valve} | {self.pressure}"
+        return f"Pin {self.num}: {self.valve} | {self.pressure} PSI"
 
 class ValveStateUpdater:
     """Valve state updater interface."""
@@ -93,8 +94,12 @@ class ValveStateUpdater:
         Args:
             valveState(str): the valve state value
         """
-        state = "O" if valveState == "1" else "C"
-        self.format.editValveState(state)
+        if valveState == "1":
+            self.format.editValveState("OPEN")
+            self.label.setStyleSheet("color: green")
+        else:
+            self.format.editValveState("CLOSED")
+            self.label.setStyleSheet("color: black")
         self.label.setText(str(self.format))
 
 class PressureUpdater:
@@ -182,6 +187,7 @@ class SerialWorker(QObject):
 
     msg = pyqtSignal(str)
     cleanup = pyqtSignal()
+    error = pyqtSignal()
 
     def __init__(self, connection: SerialComm, lock: QMutex, pins: str, parent=None) -> None:
         """Constructs new Serial Worker.
@@ -209,15 +215,21 @@ class SerialWorker(QObject):
         """Sends initial toggle and continuously reads
         until indicated to stop, then toggles again."""
         # read serial
+        error = False
         while self.program:
-            if self.mutex.tryLock():
-                received = self.serialConnection.readEolLine()
-                time.sleep(0.05)
-                self.mutex.unlock()
-                time.sleep(0.02)
-                if not received:
-                    continue
-                self.msg.emit(received)
+            if not error:
+                if self.mutex.tryLock():
+                    try:
+                        received = self.serialConnection.readEolLine()
+                    except serial.serialutil.SerialException:
+                        self.error.emit()
+                        error = True
+                    time.sleep(0.05)
+                    self.mutex.unlock()
+                    time.sleep(0.02)
+                    if not received:
+                        continue
+                    self.msg.emit(received)
         self.cleanup.emit()
 
     def sendToggle(self, pins: str | None = None) -> None:
@@ -287,6 +299,7 @@ class WaterflowGUI(QMainWindow):
         self.serialWorker.moveToThread(self.serialThread)
         self.serialThread.started.connect(self.serialWorker.run)
         self.serialWorker.cleanup.connect(self.serialThread.quit)
+        self.serialWorker.error.connect(self.errorExit)
         self.serialWorker.msg.connect(self.displayControl)
         self.serialInterrupt.connect(self.endPreset)
         self.serialThread.start()
@@ -310,7 +323,7 @@ class WaterflowGUI(QMainWindow):
         selection, ok = QInputDialog().getItem(
             self.centralWidget(),
             "COM select",
-            "Select a port:",
+            "Select a port: Look for \"Arduino\" or \"USB Serial\".",
             [f"{desc}" for name, desc, hwid in ports],
         )
         if not ok:
@@ -362,6 +375,11 @@ class WaterflowGUI(QMainWindow):
         ser = SerialComm(selectedPort, baud)
         ser.sendMessage(PIN_INIT + "\n")
         return ser
+
+    def errorExit(self) -> None:
+        """Starts exit sequence on handling of a serial exception."""
+        self.createMessageBox(ERROR, "Serial exception detected! Program will now close.")
+        self.close()
 
     def presetRun(self) -> None:
         """Starts a preset toggle/read thread with a timeout."""
@@ -659,6 +677,12 @@ class WaterflowGUI(QMainWindow):
         pinBegin = 13
         for i in range (0, 5):
             self.settings.addWidget(self.dynamicLabels[f"{PIN}{i + 1}"].label, pinBegin + i, 0)
+
+        #testLabel = QLabel()
+        #image = QPixmap("./src/octoLogo.png")
+        #testLabel.setPixmap(image)
+        #self.settings.addWidget(testLabel, 13, 0, 10, 2)
+
         self.settings.addWidget(self.pin1, 13, 1)
         self.settings.addWidget(self.pin2, 14, 1)
         self.settings.addWidget(self.pin3, 15, 1)
