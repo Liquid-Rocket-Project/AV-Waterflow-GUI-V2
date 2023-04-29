@@ -1,5 +1,5 @@
 # AV-Waterflow-GUI-V2
-Second iteration of the waterflow GUI. Simplified to only preset usage, updated to receive PT data between toggles.
+Second iteration of the waterflow GUI. Includes both preset usage and selective toggling. Updated with live updating PT values and pin states by number.
 
 ## Dependencies and Running
 - Make sure you have Python (3+) installed. 
