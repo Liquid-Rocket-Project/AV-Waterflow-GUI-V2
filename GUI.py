@@ -590,6 +590,11 @@ class WaterflowGUI(QMainWindow):
         self.pin4.setReadOnly(not self.screenAccess)
         self.pin5.setReadOnly(not self.screenAccess)
 
+        if self.screenAccess:
+            self.screenLock.setText("Lock")
+        else:
+            self.screenLock.setText("Unlock")
+
     def parseData(self, data: str) -> list[tuple]:
         """Parses incoming data to destination/value pairs.
 
@@ -686,10 +691,13 @@ class WaterflowGUI(QMainWindow):
         self.pin3 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
         self.pin4 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
         self.pin5 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin6 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin7 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
+        self.pin8 = self.createTextField(SETTING_WIDTH, LINE_HEIGHT)
 
         # status labels
         self.dynamicLabels = {}
-        for i in range (1, 6):
+        for i in range(1, 9):
             label = QLabel(f"{i}")
             formatter = PinFormat(f"{i}")
             self.dynamicLabels[f"{PIN}{i}"] = ValveStateUpdater(label, formatter)
@@ -700,7 +708,7 @@ class WaterflowGUI(QMainWindow):
         self.cancelPresetButton = self.createButton("Cancel Preset", self.sendInterrupt)
         self.enterDataButton = self.createButton("Enter Data", self.enterData)
         self.sendCommandButton = self.createButton("Send Command", self.sendSpecificToggle)
-        self.screenLock = self.createButton("Toggle Lock", self.toggleScreenLock)
+        self.screenLock = self.createButton("Lock", self.toggleScreenLock)
 
         # settings layout
         self.settings.addWidget(title, 1, 0)
@@ -718,23 +726,20 @@ class WaterflowGUI(QMainWindow):
         self.settings.addWidget(self.sendCommandButton, 11, 0)
         self.settings.addWidget(QLabel("Safety Lock: "), 9, 1)
         self.settings.addWidget(self.screenLock, 10, 1)
-        self.settings.addWidget(QLabel("Pin Control Equivalencies: "), 12, 0)
-        pinBegin = 13
-        for i in range (0, 5):
+        pinBegin = 12
+        for i in range(0, 8):
             self.settings.addWidget(self.dynamicLabels[f"{PIN}{i + 1}"].label, pinBegin + i, 0)
 
-        #testLabel = QLabel()
-        #image = QPixmap("./src/octoLogo.png")
-        #testLabel.setPixmap(image)
-        #self.settings.addWidget(testLabel, 13, 0, 10, 2)
-
-        self.settings.addWidget(self.pin1, 13, 1)
-        self.settings.addWidget(self.pin2, 14, 1)
-        self.settings.addWidget(self.pin3, 15, 1)
-        self.settings.addWidget(self.pin4, 16, 1)
-        self.settings.addWidget(self.pin5, 17, 1)
-        self.settings.addWidget(QLabel(f"*Note: Timestamps on data in are not 100 % accurate."), 18, 0, 1, 2)
-        self.settings.addItem(bottomSpacer, 19, 0)
+        self.settings.addWidget(self.pin1, pinBegin, 1)
+        self.settings.addWidget(self.pin2, pinBegin + 1, 1)
+        self.settings.addWidget(self.pin3, pinBegin + 2, 1)
+        self.settings.addWidget(self.pin4, pinBegin + 3, 1)
+        self.settings.addWidget(self.pin5, pinBegin + 4, 1)
+        self.settings.addWidget(self.pin6, pinBegin + 5, 1)
+        self.settings.addWidget(self.pin7, pinBegin + 6, 1)
+        self.settings.addWidget(self.pin8, pinBegin + 7, 1)
+        self.settings.addWidget(QLabel(f"*Note: Timestamps on data in are not 100 % accurate."), 21, 0, 1, 2)
+        self.settings.addItem(bottomSpacer, 22, 0)
         self.generalLayout.addLayout(self.settings, 0, 1)
 
 
