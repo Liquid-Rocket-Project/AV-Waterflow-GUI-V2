@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (QApplication, QGridLayout, QInputDialog, QLabel,
 BAUDRATES = [9600, 115200]
 DATE_TIME_FORMAT = "MM/dd/yyyy | hh:mm:ss:zzz -> "
 PT_DATA_FLAG = "d"  # not used in firmware right now
+COMMAND_LEN = 8
 
 # Firmware tags
 PRESSURE_TAG = ""  # no tag rn
@@ -474,7 +475,7 @@ class WaterflowGUI(QMainWindow):
         if len(set(command)) < len(command):
             self.createMessageBox(ERROR, "Duplicate pin detected - please try again.")
             return
-        self.serialWorker.sendToggle(command)
+        self.serialWorker.sendToggle(command + "0" * (COMMAND_LEN - len(command)))
 
     def sendInterrupt(self) -> None:
         """Emits serial stop signal.
